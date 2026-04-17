@@ -1,4 +1,4 @@
-package org.upc.student.isdcm.entrega2.controller;
+package org.upc.student.isdcm.entrega2.rest;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
