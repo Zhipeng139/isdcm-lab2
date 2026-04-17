@@ -6,6 +6,7 @@ import org.upc.student.isdcm.entrega2.model.DatabaseProvider;
 import org.upc.student.isdcm.entrega2.model.Video;
 
 import java.sql.*;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -148,22 +149,23 @@ public class VideoRepository {
     }
 
     public List<Video> buscarPorFecha(Integer year, Integer month, Integer day) {
-        String sql;
-        List<Integer> params = new ArrayList<>();
+        LocalDate start, end;
         if (day != null && month != null) {
-            sql = "SELECT * FROM videos WHERE YEAR(fecha_creacion) = ? AND MONTH(fecha_creacion) = ? AND DAY(fecha_creacion) = ?";
-            params.add(year); params.add(month); params.add(day);
+            start = LocalDate.of(year, month, day);
+            end   = start;
         } else if (month != null) {
-            sql = "SELECT * FROM videos WHERE YEAR(fecha_creacion) = ? AND MONTH(fecha_creacion) = ?";
-            params.add(year); params.add(month);
+            start = LocalDate.of(year, month, 1);
+            end   = start.withDayOfMonth(start.lengthOfMonth());
         } else {
-            sql = "SELECT * FROM videos WHERE YEAR(fecha_creacion) = ?";
-            params.add(year);
+            start = LocalDate.of(year, 1, 1);
+            end   = LocalDate.of(year, 12, 31);
         }
         List<Video> videos = new ArrayList<>();
         try (Connection conn = DatabaseProvider.getConnection();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
-            for (int i = 0; i < params.size(); i++) stmt.setInt(i + 1, params.get(i));
+             PreparedStatement stmt = conn.prepareStatement(
+                     "SELECT * FROM videos WHERE fecha_creacion BETWEEN ? AND ? ORDER BY fecha_creacion DESC")) {
+            stmt.setDate(1, Date.valueOf(start));
+            stmt.setDate(2, Date.valueOf(end));
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) videos.add(mapRow(rs));
             }

@@ -2,6 +2,7 @@ package org.upc.student.isdcm.entrega2.controller;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
+import org.upc.student.isdcm.entrega2.security.Secured;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.upc.student.isdcm.entrega2.error.ErrorResponse;
@@ -10,6 +11,7 @@ import org.upc.student.isdcm.entrega2.repository.VideoRepository;
 
 import java.util.List;
 
+@Secured
 @Path("/videos")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
@@ -21,6 +23,15 @@ public class VideoResource {
     @GET
     public Response obtenirTots() {
         return Response.ok(repo.findAll()).build();
+    }
+
+    @GET
+    @Path("/{id}")
+    public Response obtenirPerId(@PathParam("id") String id) {
+        Video video = repo.findById(id);
+        if (video == null)
+            return error(Response.Status.NOT_FOUND, "Video not found: " + id);
+        return Response.ok(video).build();
     }
 
     @POST
