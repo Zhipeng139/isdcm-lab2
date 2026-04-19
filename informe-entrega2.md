@@ -12,9 +12,10 @@
 
 1. [Introducción](#introducción)
 2. [Decisiones de diseño](#decisiones-de-diseño)
-3. [Ejemplos de uso de la API](#ejemplos-de-uso-de-la-api)
-4. [Cumplimiento de la rúbrica](#cumplimiento-de-la-rúbrica)
-5. [Conclusiones](#conclusiones)
+3. [Flujos del sistema](#flujos-del-sistema)
+4. [Ejemplos de uso de la API](#ejemplos-de-uso-de-la-api)
+5. [Cumplimiento de la rúbrica](#cumplimiento-de-la-rúbrica)
+6. [Conclusiones](#conclusiones)
 
 ---
 
@@ -217,6 +218,234 @@ Los repositorios están anotados con `@ApplicationScoped` y se inicializan vía 
 ### Relación con el frontend (Entrega 1 ampliada)
 
 El frontend JSP consume esta API mediante `HttpURLConnection`. Tras el login, el API key se almacena en la sesión HTTP del usuario y se envía como cabecera `X-API-Key` en todas las llamadas a endpoints de vídeo. La URL base del servicio REST es configurable en el archivo `config.properties` del proyecto frontend, sin necesidad de modificar el código.
+
+---
+
+## Flujos del sistema
+
+Cada flujo describe los pasos que recorre una petición desde el cliente HTTP hasta la base de datos y de vuelta, mostrando qué componente interviene en cada etapa.
+
+---
+
+### Flujo 1 — Registro de usuario
+
+Un cliente nuevo envía sus datos para crear una cuenta. No se necesita API key.
+
+```
+Cliente HTTP
+  │
+  │  POST /api/usuaris  {nombre, apellido, email, username, password}
+  ▼
+UsuarioResource.registrar()
+  │  Valida que username y password no estén en blanco
+  ▼
+UsuarioRepository.createUser()
+  │  Comprueba unicidad de username  →  SELECT WHERE username = ?
+  │  Comprueba unicidad de email     →  SELECT WHERE email = ?
+  │  Genera API key                  →  UUID.randomUUID()
+  │  Hashea contraseña               →  SHA-256(password)
+  │  Persiste el usuario             →  INSERT INTO usuaris (...)
+  ▼
+UsuarioResource
+  │
+  └──▶  201 Created  { "username": "zhiwei", "apiKey": "a3f7c2d1-..." }
+
+Error 409 si username o email ya existen.
+```
+
+---
+
+### Flujo 2 — Login
+
+El usuario introduce sus credenciales y recibe el API key necesario para operar con vídeos.
+
+```
+Cliente HTTP
+  │
+  │  POST /api/usuaris/login  {username, password}
+  ▼
+UsuarioResource.login()
+  │  Valida que username y password no estén en blanco
+  ▼
+UsuarioRepository.validateCredentials()
+  │  SHA-256(password)
+  │  SELECT 1 FROM usuaris WHERE username = ? AND password_hash = ?
+  │
+  ├── No coincide ──▶  401 Unauthorized  { "message": "Credencials incorrectes" }
+  │
+  └── Coincide
+        ▼
+      UsuarioRepository.getApiKey()
+        │  SELECT api_key FROM usuaris WHERE username = ?
+        ▼
+      UsuarioResource
+        └──▶  200 OK  { "username": "zhiwei", "apiKey": "a3f7c2d1-..." }
+```
+
+---
+
+### Flujo 3 — Autenticación de una petición de vídeo (filtro transversal)
+
+Este flujo se aplica **antes** de todos los endpoints de `VideoResource` gracias al patrón `@NameBinding`.
+
+```
+Cliente HTTP
+  │
+  │  Cualquier método sobre /api/videos/*
+  │  Cabecera: X-API-Key: a3f7c2d1-...
+  ▼
+ApiKeyFilter.filter()   (@Priority AUTHENTICATION)
+  │  Lee cabecera X-API-Key
+  ▼
+UsuarioRepository.validateApiKey()
+  │  SELECT 1 FROM usuaris WHERE api_key = ?
+  │
+  ├── Clave ausente o inválida ──▶  401 Unauthorized  { "message": "API key invàlida o absent" }
+  │
+  └── Clave válida
+        ▼
+      VideoResource  (el método correspondiente continúa)
+```
+
+---
+
+### Flujo 4 — Crear vídeo
+
+El frontend genera un UUID para el vídeo y lo envía junto con los metadatos.
+
+```
+Cliente HTTP (frontend JSP)
+  │
+  │  POST /api/videos  + X-API-Key  + body JSON
+  ▼
+ApiKeyFilter  ──▶  válido
+  ▼
+VideoResource.crear()
+  ▼
+VideoRepository.crear()
+  │  INSERT INTO videos (id, titulo, autor, fecha_creacion, ...)
+  │
+  ├── id duplicado (SQLState 23505) ──▶  409 Conflict
+  │
+  └── OK ──▶  201 Created  { objeto vídeo completo }
+```
+
+---
+
+### Flujo 5 — Listar y buscar vídeos
+
+```
+Cliente HTTP
+  │
+  ├── GET /api/videos              → findAll()   ORDER BY fecha_creacion DESC
+  ├── GET /api/videos/{id}         → findById()  WHERE id = ?
+  └── GET /api/videos/search?...
+        │  Prioridad: titulo > autor > year
+        ├── ?titulo=X  → buscarPorTitulo()  WHERE LOWER(titulo) LIKE LOWER(?)
+        ├── ?autor=X   → buscarPorAutor()   WHERE LOWER(autor)  LIKE LOWER(?)
+        └── ?year=Y[&month=M][&day=D]
+              │  Construye rango LocalDate  start … end
+              └── buscarPorFecha()  WHERE fecha_creacion BETWEEN ? AND ?
+  │
+  ▼
+VideoRepository  →  Derby  →  ResultSet  →  List<Video>
+  ▼
+VideoResource
+  └──▶  200 OK  [ array de vídeos ]
+
+Error 400 si no se proporciona ningún parámetro en /search.
+Error 404 si el id no existe en /videos/{id}.
+```
+
+---
+
+### Flujo 6 — Actualizar vídeo
+
+```
+Cliente HTTP
+  │
+  │  PUT /api/videos/{id}  + X-API-Key  + body JSON completo
+  ▼
+ApiKeyFilter  ──▶  válido
+  ▼
+VideoResource.actualizar()
+  │  findById(id)  →  ¿existe?
+  │
+  ├── No existe ──▶  404 Not Found
+  │
+  └── Existe
+        │  video.setId(id)  (el ID del path tiene prioridad sobre el body)
+        ▼
+      VideoRepository.actualizar()
+        │  UPDATE videos SET titulo=?, autor=?, ... WHERE id=?
+        ▼
+      200 OK  { objeto vídeo actualizado }
+```
+
+---
+
+### Flujo 7 — Eliminar vídeo
+
+```
+Cliente HTTP
+  │
+  │  DELETE /api/videos/{id}  + X-API-Key
+  ▼
+ApiKeyFilter  ──▶  válido
+  ▼
+VideoResource.eliminar()
+  ▼
+VideoRepository.eliminar()
+  │  DELETE FROM videos WHERE id = ?
+  │  executeUpdate() == 0  →  lanza IllegalArgumentException
+  │
+  ├── No encontrado ──▶  404 Not Found
+  │
+  └── OK ──▶  204 No Content  (sin cuerpo)
+```
+
+---
+
+### Flujo 8 — Reproducir vídeo e incrementar contador
+
+Este es el flujo completo que involucra tanto el frontend (Entrega 1) como la API REST (Entrega 2).
+
+```
+Navegador (reproduccion.jsp)
+  │
+  │  Usuario pulsa Play en el reproductor VideoJS
+  │
+  ▼
+JavaScript  player.one('play', ...)
+  │  fetch POST /isdcm-project/reproduccion
+  │  Cabecera: X-Requested-With: XMLHttpRequest
+  │  Body: id=550e8400-...
+  ▼
+servletREST (frontend — Entrega 1)
+  │  Lee apiKey de HttpSession
+  │  Llama:
+  │    POST http://localhost:8080/entrega-2-.../api/videos/{id}/view
+  │    Cabecera: X-API-Key: a3f7c2d1-...
+  ▼
+ApiKeyFilter  ──▶  válido
+  ▼
+VideoResource.reproducir()
+  ▼
+VideoRepository.incrementarReproducciones()
+  │  UPDATE videos SET reproducciones = reproducciones + 1 WHERE id = ?
+  ▼
+VideoRepository.findById()
+  │  SELECT * FROM videos WHERE id = ?
+  ▼
+VideoResource  ──▶  200 OK  { vídeo con reproducciones: 13 }
+  ▼
+servletREST (frontend)
+  │  Detecta X-Requested-With → devuelve JSON al navegador
+  ▼
+JavaScript
+  └──▶  document.getElementById('repro-count').textContent = 13
+        (contador actualizado en pantalla sin recargar la página)
+```
 
 ---
 
