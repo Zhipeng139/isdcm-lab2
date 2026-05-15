@@ -25,6 +25,7 @@ dependencies {
     compileOnly('jakarta.platform:jakarta.jakartaee-api:11.0.0')
 
     implementation('io.jsonwebtoken:jjwt:0.7.0')
+    implementation('org.bitbucket.b_c:jose4j:0.9.6')
 
     testImplementation("org.junit.jupiter:junit-jupiter-api:${junitVersion}")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junitVersion}")

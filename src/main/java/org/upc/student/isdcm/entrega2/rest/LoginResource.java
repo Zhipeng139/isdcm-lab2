@@ -34,11 +34,16 @@ public class LoginResource {
 
         String apiKey = repo.getApiKey(username);
         String jwt = JwtUtil.createToken(username.toLowerCase(), apiKey);
+        String jwe = JwtUtil.wrapInJwe(jwt);
         return Response.ok(
                 Json.createObjectBuilder()
                         .add("username", username.toLowerCase())
                         .add("apiKey", apiKey)
                         .add("token", jwt)
+                        .add("tokenJwe", jwe)
+                        .add("jwsSecret", JwtUtil.getSecret())
+                        .add("jweKey", JwtUtil.jweKeyBase64Url())
+                        .add("jweJwk", JwtUtil.jweKeyAsJwk())
                         .build()
         ).build();
     }
