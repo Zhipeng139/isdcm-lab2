@@ -1,0 +1,25 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="GlassFish 6.2.5" type="GlassfishConfiguration" factoryName="Local" APPLICATION_SERVER_NAME="GlassFish 6.2.5" ALTERNATIVE_JRE_ENABLED="false" nameIsGenerated="true">
+    <deployment>
+      <file path="$PROJECT_DIR$/build/libs/entrega-2-1.0-SNAPSHOT.war">
+        <settings />
+      </file>
+    </deployment>
+    <server-settings>
+      <option name="DOMAIN" value="domain1" />
+      <option name="PRESERVE" value="false" />
+      <option name="COMPATIBILITY" value="false" />
+      <option name="VIRTUAL_SERVER" />
+      <option name="USERNAME" value="admin" />
+      <option name="CREDENTIAL_ALIAS" />
+    </server-settings>
+    <predefined_log_file enabled="true" id="GlassFish" />
+    <RunnerSettings RunnerId="Debug">
+      <option name="DEBUG_PORT" value="9009" />
+    </RunnerSettings>
+    <method v="2">
+      <option name="Make" enabled="true" />
+      <option name="Gradle.BeforeRunTask" enabled="true" tasks="war" externalProjectPath="$PROJECT_DIR$" vmOptions="" scriptParameters="" />
+    </method>
+  </configuration>
+</component>
